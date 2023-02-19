@@ -5,3 +5,7 @@ weight
 traced_model.pt
 dataset_no_line_crossing.mp4
 test_video.mp4
+deep_sort\__pycache__
+utils\__pycache__
+tools\__pycache__
+models\__pycache__
