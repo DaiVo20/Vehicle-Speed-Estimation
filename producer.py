@@ -4,27 +4,6 @@ import cv2
 from time import sleep
 from kafka import KafkaProducer
 
-topic = "distributed-video"
-
-def publish_video(video_file):
-    producer = KafkaProducer(bootstrap_servers='localhost:9092')
-    video = cv2.VideoCapture(video_file)
-    print('Publishing video...')
-
-    while(video.isOpened()):
-        success, frame = video.read()
-        
-        if not success:
-            print("Error while reading video!")
-            break
-        
-        ret, buffer = cv2.imencode('.jpg', frame)
-        producer.send(topic, buffer.tobytes())
-        time.sleep(0.2)
-
-    video.release()
-    print('publish complete')
-
 
 class KafkaVideoStreaming():
     def __init__(self, bootstrap_servers, topic, videoFile, client_id, batch_size=65536, frq=0.001):
@@ -118,16 +97,41 @@ class KafkaVideoStreaming():
             print("Keyboard interrupt was detected. Exiting...")
 
 
+topic = "KafkaVideoStream"
+
+def publish_video(video_file):
+    producer = KafkaProducer(bootstrap_servers='localhost:9092')
+    video = cv2.VideoCapture(video_file)
+    print('Publishing video...')
+
+    frame_num = 0
+    while(video.isOpened()):
+        success, frame = video.read()
+        
+        print(f"Sending frame {frame_num}...")
+        if not success:
+            print("Error while reading video!")
+            break
+        
+        ret, buffer = cv2.imencode('.jpg', frame)
+        producer.send(topic, buffer.tobytes())
+
+        frame_num += 1
+        # time.sleep(0.01)
+
+    video.release()
+    print('publish complete')
+
 if __name__ == '__main__':
     if(len(sys.argv) > 1):
         video_path = sys.argv[1]
 
-        # publish_video(video_path)
+        publish_video(video_path)
 
-        video_stream = KafkaVideoStreaming(
-            bootstrap_servers='localhost:9092',
-            topic='KafkaVideoStream',
-            videoFile=video_path,
-            client_id='KafkaVideoStreamClient',
-        )
-        video_stream.run()
+        # video_stream = KafkaVideoStreaming(
+        #     bootstrap_servers='localhost:9092',
+        #     topic='KafkaVideoStream',
+        #     videoFile=video_path,
+        #     client_id='KafkaVideoStreamClient',
+        # )
+        # video_stream.run()

@@ -1,3 +1,6 @@
+# vim: expandtab:ts=4:sw=4
+
+
 class TrackState:
     """
     Enumeration type for the single target track state. Newly created tracks are
@@ -11,12 +14,12 @@ class TrackState:
     Confirmed = 2
     Deleted = 3
 
+
 class Track:
     """
     A single target track with state space `(x, y, a, h)` and associated
     velocities, where `(x, y)` is the center of the bounding box, `a` is the
     aspect ratio and `h` is the height.
-
     Parameters
     ----------
     mean : ndarray
@@ -35,7 +38,6 @@ class Track:
     feature : Optional[ndarray]
         Feature vector of the detection this track originates from. If not None,
         this feature is added to the `features` cache.
-
     Attributes
     ----------
     mean : ndarray
@@ -55,22 +57,23 @@ class Track:
     features : List[ndarray]
         A cache of features. On each measurement update, the associated feature
         vector is added to this list.
-
-    ## Added by KETI to calculate vehicle speed using VDLs ##
+    ## Attributes to calculate vehicle speed using VDLs ##
     time_passing_vline_start : int
         Start time to calculate own speed
     time_passing_vline_end: int
         End time to calculate own speed
+    area: int
+        Object in area limited by two lines
     class_name : string
-        Name of the vehicle (Car, Truck, Bus)
-    driving_lane : int
-        A number of driving lane
+        Name of the vehicle (Car, Truck, Bus, Van)
     speed : int
         Speed of the vehicle
     speed_time: int
         Interval time between time_passing_vline_start and time_passing_vline_end
     speed_update: bool
         Flag that determines whether to calculate speed or not
+    coord_obj: tuple
+        Coordinates of object when it just appears in the area
     """
 
     def __init__(self, mean, covariance, track_id, n_init, max_age,
@@ -89,28 +92,24 @@ class Track:
 
         self._n_init = n_init
         self._max_age = max_age
-        
+        self.class_name = class_name
+
         self.time_passing_vline_start = 0
         self.time_passing_vline_end = 0
-        
-        self.class_name = class_name
-        self.driving_lane = 0        
+        self.coord_obj = []
+        self.area = -1
         self.speed = 0
-        self.speeds = [0, 0, 0, 0]
-        self.time_start = [0, 0, 0, 0]
-        self.time_end = [0, 0, 0, 0]
         self.speed_time = 0
         self.speed_update = True
+        self.begin_count_time = False
 
     def to_tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
         width, height)`.
-
         Returns
         -------
         ndarray
             The bounding box.
-
         """
         ret = self.mean[:4].copy()
         ret[2] *= ret[3]
@@ -120,36 +119,25 @@ class Track:
     def to_tlbr(self):
         """Get current position in bounding box format `(min x, miny, max x,
         max y)`.
-
         Returns
         -------
         ndarray
             The bounding box.
-
         """
         ret = self.to_tlwh()
         ret[2:] = ret[:2] + ret[2:]
         return ret
-
+    
     def get_class(self):
-        if self.class_name == 0:
-            self.class_name = 'bus'
-        elif self.class_name == 1:
-            self.class_name = 'car'
-        elif self.class_name == 2:
-            self.class_name = 'truck'
-        
         return self.class_name
 
     def predict(self, kf):
         """Propagate the state distribution to the current time step using a
         Kalman filter prediction step.
-
         Parameters
         ----------
         kf : kalman_filter.KalmanFilter
             The Kalman filter.
-
         """
         self.mean, self.covariance = kf.predict(self.mean, self.covariance)
         self.age += 1
@@ -158,14 +146,12 @@ class Track:
     def update(self, kf, detection):
         """Perform Kalman filter measurement update step and update the feature
         cache.
-
         Parameters
         ----------
         kf : kalman_filter.KalmanFilter
             The Kalman filter.
         detection : Detection
             The associated detection.
-
         """
         self.mean, self.covariance = kf.update(
             self.mean, self.covariance, detection.to_xyah())
