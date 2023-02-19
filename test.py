@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+# python test.py --weights weights/best.pt --data data/coco.yaml \
+# --project results --task test --name test --exist-ok --verbose
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
 import argparse
 import json
 import os
@@ -57,7 +62,11 @@ def test(data,
         model = attempt_load(weights, map_location=device)  # load FP32 model
         gs = max(int(model.stride.max()), 32)  # grid size (max stride)
         imgsz = check_img_size(imgsz, s=gs)  # check img_size
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
         if trace:
             model = TracedModel(model, device, opt.img_size)
 
@@ -308,7 +317,11 @@ if __name__ == '__main__':
     opt.save_json |= opt.data.endswith('coco.yaml')
     opt.data = check_file(opt.data)  # check file
     print(opt)
+<<<<<<< HEAD
     #check_requirements()
+=======
+    # check_requirements()
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
 
     if opt.task in ('train', 'val', 'test'):  # run normally
         test(opt.data,

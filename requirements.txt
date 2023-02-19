@@ -38,8 +38,16 @@ thop  # FLOPs computation
 # pycocotools>=2.0  # COCO mAP
 # roboflow
 
+<<<<<<< HEAD
 cd C:/kafka
 .\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
 
 cd C:/kafka
 .\bin\windows\kafka-server-start.bat .\config\server.properties
+=======
+# cd C:/kafka
+# .\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
+
+# cd C:/kafka
+# .\bin\windows\kafka-server-start.bat .\config\server.properties
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95

@@ -8,6 +8,10 @@ class TrackState:
     the track state is changed to `confirmed`. Tracks that are no longer alive
     are classified as `deleted` to mark them for removal from the set of active
     tracks.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     """
 
     Tentative = 1
@@ -20,6 +24,10 @@ class Track:
     A single target track with state space `(x, y, a, h)` and associated
     velocities, where `(x, y)` is the center of the bounding box, `a` is the
     aspect ratio and `h` is the height.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     Parameters
     ----------
     mean : ndarray
@@ -38,6 +46,10 @@ class Track:
     feature : Optional[ndarray]
         Feature vector of the detection this track originates from. If not None,
         this feature is added to the `features` cache.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     Attributes
     ----------
     mean : ndarray
@@ -57,6 +69,10 @@ class Track:
     features : List[ndarray]
         A cache of features. On each measurement update, the associated feature
         vector is added to this list.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     ## Attributes to calculate vehicle speed using VDLs ##
     time_passing_vline_start : int
         Start time to calculate own speed
@@ -106,10 +122,18 @@ class Track:
     def to_tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
         width, height)`.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
         Returns
         -------
         ndarray
             The bounding box.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
         """
         ret = self.mean[:4].copy()
         ret[2] *= ret[3]
@@ -119,10 +143,18 @@ class Track:
     def to_tlbr(self):
         """Get current position in bounding box format `(min x, miny, max x,
         max y)`.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
         Returns
         -------
         ndarray
             The bounding box.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
         """
         ret = self.to_tlwh()
         ret[2:] = ret[:2] + ret[2:]
@@ -134,10 +166,18 @@ class Track:
     def predict(self, kf):
         """Propagate the state distribution to the current time step using a
         Kalman filter prediction step.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
         Parameters
         ----------
         kf : kalman_filter.KalmanFilter
             The Kalman filter.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
         """
         self.mean, self.covariance = kf.predict(self.mean, self.covariance)
         self.age += 1
@@ -146,12 +186,20 @@ class Track:
     def update(self, kf, detection):
         """Perform Kalman filter measurement update step and update the feature
         cache.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
         Parameters
         ----------
         kf : kalman_filter.KalmanFilter
             The Kalman filter.
         detection : Detection
             The associated detection.
+<<<<<<< HEAD
+=======
+
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
         """
         self.mean, self.covariance = kf.update(
             self.mean, self.covariance, detection.to_xyah())
@@ -181,4 +229,8 @@ class Track:
 
     def is_deleted(self):
         """Returns True if this track is dead and should be deleted."""
+<<<<<<< HEAD
         return self.state == TrackState.Deleted
+=======
+        return self.state == TrackState.Deleted
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95

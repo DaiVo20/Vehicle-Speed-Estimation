@@ -25,7 +25,11 @@ def non_max_suppression(boxes, classes, max_bbox_overlap, scores=None):
     boxes : ndarray
         Array of ROIs (x, y, width, height).
     max_bbox_overlap : float
+<<<<<<< HEAD
         ROIs that overlap more than this values are suppressed.
+=======
+        ROIs that overlap more than these values are suppressed.
+>>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     scores : Optional[array_like]
         Detector confidence score.
 
