@@ -19,10 +19,6 @@ def find_distance_between_line_point(p3, p1, p2):
     p3: point outside the line
     p1: point inside the line
     p2: point inside the line
-<<<<<<< HEAD
-=======
-
->>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     Returns
     -------
         distance
@@ -36,26 +32,14 @@ def find_distance_between_line_point(p3, p1, p2):
 def check_line(p1, p2, w):
     """
     This is a function to check where the point w is based on a straight line.
-<<<<<<< HEAD
-=======
-
->>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     Args:
         p1: left point on a straight line
         p2: right point on a straight line
         w: point you want to know where you are in a straight line
-<<<<<<< HEAD
-=======
-
->>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     Returns:
         x |- x > 0: w point is above a straight line
           |- x = 0: w point is on a straight line
           |- x < 0: w point is below a straight line
-<<<<<<< HEAD
-=======
-
->>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     """
     x = (p2[0] - p1[0]) * (w[1] - p1[1]) - (w[0] - p1[0]) * (p2[1] - p1[1])
     return x
@@ -64,19 +48,11 @@ def check_line(p1, p2, w):
 def define_point_in_area(point, begin_lines, end_lines):
     """
     Determine area which point is in
-<<<<<<< HEAD
-=======
-
->>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     Parameters
     ----------
     point: (x, y)
     begin_lines: left point on a straight line
     end_lines: right point on a straight line
-<<<<<<< HEAD
-=======
-
->>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     Returns
     -------
     area
@@ -104,10 +80,6 @@ def estimate_distance(previous_coords, current_coords, VIRTUAL_LINE_DISTANCE, wi
     current_coords: current position of object
     VIRTUAL_LINE_DISTANCE: actual distance between two virtual distance lines
     width_area: distances of area limited by two lines
-<<<<<<< HEAD
-=======
-
->>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     Returns
     -------
     distance
@@ -121,15 +93,8 @@ def estimate_distance(previous_coords, current_coords, VIRTUAL_LINE_DISTANCE, wi
 def calcSpeed(track, bbox, frame_idx, FPS):
     """
     This is a function to calculate vehicle speed  when vehicles pass the two VDL line((luLine, ldLine) or (ruLine, rdLine))
-<<<<<<< HEAD
     Returns:
         track
-=======
-
-    Returns:
-        track
-
->>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
     Parameters
     ----------
     track: Track class(Deep Sort reference code: https://github.com/nwojke/deep_sort/tree/master/deep_sort)
@@ -178,8 +143,4 @@ def calcSpeed(track, bbox, frame_idx, FPS):
                 track.coord_obj = bottom_center  # update coordinates when object moves different area
                 track.area = area
 
-<<<<<<< HEAD
     return track
-=======
-    return track
->>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
