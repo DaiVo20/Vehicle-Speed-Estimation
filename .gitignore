@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 IO_data
 __pycache__
 detected_frame
@@ -6,10 +5,3 @@ weight
 traced_model.pt
 dataset_no_line_crossing.mp4
 test_video.mp4
-=======
-traced_model.pt
-dataset_no_line_crossing.mp4
-1_Trim.mp4
-detected_frame
-weights
->>>>>>> 6a215c62cc9d68dea667f2bb351c59c37ebd2e95
