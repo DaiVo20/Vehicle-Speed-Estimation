@@ -1,3 +1,4 @@
+import numpy as np
 import datetime
 from time import sleep
 import cv2
@@ -20,7 +21,7 @@ from deep_sort.deep_sort import preprocessing, nn_matching
 from deep_sort.deep_sort.detection import Detection
 from deep_sort.deep_sort.tracker import Tracker
 import matplotlib.pyplot as plt
-from flask import Flask, render_template, make_response, request
+from flask import Flask, render_template, make_response, request, jsonify
 
 # import from helpers
 from tracking_helpers import read_class_names, create_box_encoder
@@ -44,6 +45,10 @@ class DetectionTrackingModel():
 
         # initialize Deep Sort
         self.encoder = create_box_encoder(reID_model_path, batch_size=128)
+        # device = select_device("0" if torch.cuda.is_available() else 'cpu')
+        # self.encoder = torch.load(reID_model_path, map_location=torch.device(device))
+        # self.encoder = self.encoder.eval()
+        
         metric = nn_matching.NearestNeighborDistanceMetric("cosine", 0.4, None)
         self.tracker = Tracker(metric)
         self.count_objects = True
@@ -291,6 +296,8 @@ tracker = DeepSORT(reID_model_path='./weights/deep_sort.pt', detector=detector)
 
 def get_video_stream(detector, tracker):
     global frame_num
+    global count_car, count_van, count_bus, count_truck
+    global labels_line, values_line_car, values_line_van, values_line_bus, values_line_truck
     for message in consumer:
         nparr = np.frombuffer(message.value, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -325,10 +332,26 @@ def get_video_stream(detector, tracker):
                         (255, 255, 255), 1, lineType=cv2.LINE_AA)
 
         frame_num += 1
+        
+        count_car += 1
+        count_van += 1
+        count_bus += 1
+        count_truck += 1
+        frame_num += 1
+
+        if frame_num % 30 == 0:
+            labels_line.append('0')
+            values_line_car.append(np.random.randint(1,10))
+            values_line_van.append(np.random.randint(1,10))
+            values_line_bus.append(np.random.randint(1,10))
+            values_line_truck.append(np.random.randint(1,10))
 
         ret, buffer = cv2.imencode('.jpg', frame)
         yield (b'--frame\r\n'
                b'Content-Type: image/jpg\r\n\r\n' + buffer.tobytes() + b'\r\n\r\n')
+        # ret, buffer = cv2.imencode('.jpg', frame)
+        # yield (b'--frame\r\n'
+        #        b'Content-Type: image/jpg\r\n\r\n' + buffer.tobytes() + b'\r\n\r\n')
 
 
 topic = "KafkaVideoStream"
@@ -343,15 +366,42 @@ count_van = 0
 count_bus = 0
 count_truck = 0
 
+labels_line = ['0']
+values_line_car = [0]
+values_line_van = [1]
+values_line_bus = [2]
+values_line_truck = [5]
 
 @app.route('/', methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         conf_thres = request.data
-        # detector_and_tracker.detector.conf_thres = received_data
+        detector.conf_thres = int(conf_thres)/100
         print("Confidence threshold", conf_thres)
-    return render_template('index1.html')
+    return render_template('index1.html',
+                           count_car=count_car,
+                           count_van=count_van,
+                           count_bus=count_bus,
+                           count_truck=count_truck,
+                           labels_line=labels_line,
+                            values_line_car=values_line_car,
+                            values_line_van=values_line_van, 
+                            values_line_bus=values_line_bus, 
+                            values_line_truck=values_line_truck)
 
+@app.route('/refreshData')
+def refresh_graph_data():
+    global count_car, count_van, count_bus, count_truck
+    global labels_line, values_line_car, values_line_van, values_line_bus, values_line_truck
+    return jsonify(count_car=count_car,
+                   count_van=count_van,
+                   count_bus=count_bus,
+                   count_truck=count_truck,
+                   labels_line=labels_line,
+                   values_line_car=values_line_car,
+                   values_line_van=values_line_van, 
+                   values_line_bus=values_line_bus, 
+                   values_line_truck=values_line_truck)
 
 @app.route('/data', methods=["GET", "POST"])
 def data():
@@ -383,6 +433,33 @@ from io import BytesIO
 
 # detector_and_tracker = DetectionTrackingModel(model_path='./weight/best.pt',
 #                                               reID_model_path='./deep_sort/model_weights/mars-small128.pb')
+
+# frame_num = 0
+
+# def get_video_stream():
+    # global frame_num
+    # global count_car, count_van, count_bus, count_truck
+    # global labels_line, values_line_car, values_line_van, values_line_bus, values_line_truck
+    # for message in consumer:
+    #     nparr = np.frombuffer(message.value, np.uint8)
+    #     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    #     _, result_frame = detector_and_tracker.detect_and_tracking(frame, frame_num)
+    #     count_car += 1
+    #     count_van += 1
+    #     count_bus += 1
+    #     count_truck += 1
+    #     frame_num += 1
+
+    #     if frame_num % 30 == 0:
+    #         labels_line.append('0')
+    #         values_line_car.append(np.random.randint(1,10))
+    #         values_line_van.append(np.random.randint(1,10))
+    #         values_line_bus.append(np.random.randint(1,10))
+    #         values_line_truck.append(np.random.randint(1,10))
+
+    #     ret, buffer = cv2.imencode('.jpg', result_frame)
+    #     yield (b'--frame\r\n'
+    #            b'Content-Type: image/jpg\r\n\r\n' + buffer.tobytes() + b'\r\n\r\n')
 
 
 if __name__ == "__main__":
