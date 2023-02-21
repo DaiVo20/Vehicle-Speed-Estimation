@@ -125,10 +125,13 @@ def publish_video(video_file):
 
 
 if __name__ == '__main__':
-    if (len(sys.argv) > 1):
-        video_path = sys.argv[1]
+    video_path = 'video/1.mp4'
+    publish_video(video_path)
+    
+    # if (len(sys.argv) > 1):
+    #     video_path = sys.argv[1]
 
-        publish_video(video_path)
+    #     publish_video(video_path)
 
         # video_stream = KafkaVideoStreaming(
         #     bootstrap_servers='localhost:9092',

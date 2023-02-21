@@ -1,197 +1,17 @@
-import numpy as np
-import datetime
-from time import sleep
-import cv2
-import os
 import json
-import pathlib
-import numpy as np
-from queue import Queue
-from threading import Thread
-from flask import Flask, Response, render_template
-from kafka import KafkaConsumer
-from bridge_wrapper import DeepSORT
-from deep_sort.deep_sort.tracker import Tracker
-from pathlib import Path
-import os
 import random
 import time
-from calc_speed import calcSpeed
-from deep_sort.deep_sort import preprocessing, nn_matching
-from deep_sort.deep_sort.detection import Detection
-from deep_sort.deep_sort.tracker import Tracker
+from pathlib import Path
+from queue import Queue
+from threading import Thread
+from time import sleep
 import matplotlib.pyplot as plt
 from flask import Flask, render_template, make_response, request, jsonify
-
-# import from helpers
-from tracking_helpers import read_class_names, create_box_encoder
+from flask import Response
+from kafka import KafkaConsumer
+from bridge_wrapper import DeepSORT
+from calc_speed import calcSpeed
 from detection_helpers import *
-
-
-class DetectionTrackingModel():
-    def __init__(self, model_path,
-                 reID_model_path,
-                 max_cosine_distance=0.4,
-                 nms_max_overlap=1.0,
-                 coco_names_path="./io_data/input/classes/coco.names"):
-
-        # YOLO v7
-        self.detector = Detector(conf_thres=0.25)
-        self.detector.load_model(model_path, trace=False)
-
-        self.coco_names_path = coco_names_path
-        self.nms_max_overlap = nms_max_overlap
-        self.class_names = read_class_names()
-
-        # initialize Deep Sort
-        self.encoder = create_box_encoder(reID_model_path, batch_size=128)
-        # device = select_device("0" if torch.cuda.is_available() else 'cpu')
-        # self.encoder = torch.load(reID_model_path, map_location=torch.device(device))
-        # self.encoder = self.encoder.eval()
-        
-        metric = nn_matching.NearestNeighborDistanceMetric("cosine", 0.4, None)
-        self.tracker = Tracker(metric)
-        self.count_objects = True
-        self.verbose = 1
-
-        self.save_to = './detected_frame'
-        pathlib.Path(self.save_to).mkdir(parents=True, exist_ok=True)
-
-    def save_txt(self, frame_num, bboxes, scores, classes):
-        file_path = f'{self.save_to}/{frame_num}.txt'
-        with open(file_path, 'w') as f:
-            for bbox, score, class_id in zip(bboxes, scores, classes):
-                f.write(f"{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])},{score},{int(class_id)}")
-                f.write('\n')
-
-    def load_txt(self, frame_num):
-        bboxes = []
-        scores = []
-        classes = []
-        print("Loading detected frame from file...")
-        file_path = f'{self.save_to}/{frame_num}.txt'
-        with open(file_path) as f:
-            for line in f:
-                detect_data = line.split(',')
-                bboxes.append([int(detect_data[0]), int(detect_data[1]), int(detect_data[2]), int(detect_data[3])])
-                scores.append(float(detect_data[4]))
-                classes.append(int(detect_data[5]))
-        num_objects = len(bboxes)
-
-        return bboxes, scores, classes, num_objects
-
-    def detect_and_tracking(self, frame, frame_num, skip_frames=0):
-        # skip every nth frame. When every frame is not important, you can use this to fasten the process
-        if skip_frames and not frame_num % skip_frames:
-            return False, frame
-
-        if self.verbose >= 1:
-            start_time = time.time()
-
-        if not os.path.exists(f'./detected_frame/{frame_num}.txt'):
-            # Get the detections
-            yolo_dets = self.detector.detect(frame.copy(), plot_bb=False)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            if yolo_dets is None:
-                bboxes = []
-                scores = []
-                classes = []
-                num_objects = 0
-
-            else:
-                bboxes = yolo_dets[:, :4]
-                bboxes[:, 2] = bboxes[:, 2] - bboxes[:, 0]  # convert from xyxy to xywh
-                bboxes[:, 3] = bboxes[:, 3] - bboxes[:, 1]
-
-                scores = yolo_dets[:, 4]
-                classes = yolo_dets[:, -1]
-                num_objects = bboxes.shape[0]
-
-            self.save_txt(frame_num, bboxes, scores, classes)
-
-        else:
-            bboxes, scores, classes, num_objects = self.load_txt(frame_num)
-
-        # ---------------------------------------- DETECTION PART COMPLETED ---------------------------------------------------------------------
-
-        names = []
-        for i in range(num_objects):  # loop through objects and use class index to get class name
-            class_indx = int(classes[i])
-            class_name = self.class_names[class_indx]
-            names.append(class_name)
-
-        names = np.array(names)
-        count = len(names)
-
-        if self.count_objects:
-            cv2.putText(frame, "Objects being tracked: {}".format(count), (5, 35), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1.5,
-                        ((255, 255, 255)), 2)
-
-        # ---------------------------------- DeepSORT tacker work starts here ------------------------------------------------------------
-        features = self.encoder(frame,
-                                bboxes)  # encode detections and feed to tracker. [No of BB / detections per frame, embed_size]
-        detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in
-                      zip(bboxes, scores, names, features)]  # [No of BB per frame] deep_sort.detection.Detection object
-
-        cmap = plt.get_cmap('tab20b')  # initialize color map
-        colors = [cmap(i)[:3] for i in np.linspace(0, 1, 20)]
-
-        boxs = np.array([d.tlwh for d in detections])  # run non-maxima supression below
-        scores = np.array([d.confidence for d in detections])
-        classes = np.array([d.class_name for d in detections])
-        indices = preprocessing.non_max_suppression(boxs, classes, self.nms_max_overlap, scores)
-        detections = [detections[i] for i in indices]
-
-        self.tracker.predict()  # Call the tracker
-        self.tracker.update(detections)  # updtate using Kalman Gain
-
-        for track in self.tracker.tracks:  # update new findings AKA tracks
-            if not track.is_confirmed() or track.time_since_update > 1:
-                continue
-            bbox = track.to_tlbr()
-            class_name = track.get_class()
-
-            # Calculate speed of object
-            track = calcSpeed(track, bbox, frame_num, 30)
-
-            # draw bbox on screen
-            color = colors[int(track.track_id) % len(colors)]
-            color = [i * 255 for i in color]
-            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
-            text_header_bbox: str = class_name + ":" + str(track.track_id)
-
-            if track.speed > 0:
-                print(f"{track.class_name} {track.track_id}: {track.speed} km/h")
-                text_header_bbox += "-" + str(round(track.speed, 1)) + "km/h"
-
-            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1] - 30)),
-                          (int(bbox[0]) + (len(class_name) + len(str(track.track_id))) * 17, int(bbox[1])), color,
-                          -1)
-            cv2.putText(frame, text_header_bbox, (int(bbox[0]), int(bbox[1] - 11)), 0, 0.6,
-                        (255, 255, 255), 1, lineType=cv2.LINE_AA)
-
-            if self.verbose == 2:
-                print("Tracker ID: {}, Class: {},  BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id),
-                                                                                                    class_name, (
-                                                                                                    int(bbox[0]),
-                                                                                                    int(bbox[1]),
-                                                                                                    int(bbox[2]),
-                                                                                                    int(bbox[3]))))
-
-        # -------------------------------- Tracker work ENDS here -----------------------------------------------------------------------
-        if self.verbose >= 1:
-            fps = 1.0 / (time.time() - start_time)  # calculate frames per second of running detections
-            if not self.count_objects:
-                print(f"Processed frame no: {frame_num} || Current FPS: {round(fps, 2)}")
-            else:
-                print(f"Processed frame no: {frame_num} || Current FPS: {round(fps, 2)} || Objects tracked: {count}")
-
-        frame_result = np.asarray(frame)
-        frame_result = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-
-        # cv2.imshow('frame', result)
-        return True, frame_result
 
 
 class KafkaVideoView():
@@ -203,11 +23,6 @@ class KafkaVideoView():
         self.poll = poll
         self.frq = frq
         self.frame_num = 0
-        # self.detector = Detector()
-        # self.detector.load_model('./weights/best.pt', trace=False)
-        # self.detector.device = 0
-        # self.tracker = DeepSORT(reID_model_path='./weights/deep_sort.pt', detector=self.detector)
-        # tracker.track_video(video='./IO_data/input/video/1.mp4', show_live=True, count_objects=True, verbose=1)
 
 
     def setConsumer(self):
@@ -293,21 +108,29 @@ detector.load_model('./weights/best.pt', trace=False)
 detector.device = 0
 tracker = DeepSORT(reID_model_path='./weights/deep_sort.pt', detector=detector)
 
+id_objects = {'car': [], 'van': [], 'bus': [], 'truck': []}
+
 
 def get_video_stream(detector, tracker):
     global frame_num
-    global count_car, count_van, count_bus, count_truck
+    global id_objects
+    global count_truck, count_bus, count_van, count_car
     global labels_line, values_line_car, values_line_van, values_line_bus, values_line_truck
     for message in consumer:
         nparr = np.frombuffer(message.value, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         yolo_dets = detector.detect(frame.copy(), plot_bb=False)  # Get the detections
         tracker.run_deep_sort(frame, yolo_dets)
+
+
         for track in tracker.tracker.tracks:  # update new findings AKA tracks
             if not track.is_confirmed() or track.time_since_update > 1:
                 continue
             bbox = track.to_tlbr()
             class_name = track.get_class()
+            if track.track_id not in id_objects[class_name]:
+                id_objects[class_name].append(track.track_id)
+
             track = calcSpeed(track, bbox, frame_num, 30)
 
             # initialize color map
@@ -332,19 +155,17 @@ def get_video_stream(detector, tracker):
                         (255, 255, 255), 1, lineType=cv2.LINE_AA)
 
         frame_num += 1
-        
-        count_car += 1
-        count_van += 1
-        count_bus += 1
-        count_truck += 1
-        frame_num += 1
+        count_car = len(id_objects['car'])
+        count_van = len(id_objects['van'])
+        count_bus = len(id_objects['bus'])
+        count_truck = len(id_objects['truck'])
 
         if frame_num % 30 == 0:
             labels_line.append('0')
-            values_line_car.append(np.random.randint(1,10))
-            values_line_van.append(np.random.randint(1,10))
-            values_line_bus.append(np.random.randint(1,10))
-            values_line_truck.append(np.random.randint(1,10))
+            values_line_car.append(np.random.randint(1, 10))
+            values_line_van.append(np.random.randint(1, 10))
+            values_line_bus.append(np.random.randint(1, 10))
+            values_line_truck.append(np.random.randint(1, 10))
 
         ret, buffer = cv2.imencode('.jpg', frame)
         yield (b'--frame\r\n'
@@ -361,10 +182,10 @@ consumer = KafkaConsumer(
 
 app = Flask(__name__)
 
-count_car = 0
-count_van = 0
-count_bus = 0
-count_truck = 0
+count_car = len(id_objects['car'])
+count_van = len(id_objects['van'])
+count_bus = len(id_objects['bus'])
+count_truck = len(id_objects['truck'])
 
 labels_line = ['0']
 values_line_car = [0]
@@ -372,11 +193,12 @@ values_line_van = [1]
 values_line_bus = [2]
 values_line_truck = [5]
 
+
 @app.route('/', methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         conf_thres = request.data
-        detector.conf_thres = int(conf_thres)/100
+        detector.conf_thres = int(conf_thres) / 100
         print("Confidence threshold", conf_thres)
     return render_template('index1.html',
                            count_car=count_car,
@@ -384,10 +206,11 @@ def index():
                            count_bus=count_bus,
                            count_truck=count_truck,
                            labels_line=labels_line,
-                            values_line_car=values_line_car,
-                            values_line_van=values_line_van, 
-                            values_line_bus=values_line_bus, 
-                            values_line_truck=values_line_truck)
+                           values_line_car=values_line_car,
+                           values_line_van=values_line_van,
+                           values_line_bus=values_line_bus,
+                           values_line_truck=values_line_truck)
+
 
 @app.route('/refreshData')
 def refresh_graph_data():
@@ -399,9 +222,10 @@ def refresh_graph_data():
                    count_truck=count_truck,
                    labels_line=labels_line,
                    values_line_car=values_line_car,
-                   values_line_van=values_line_van, 
-                   values_line_bus=values_line_bus, 
+                   values_line_van=values_line_van,
+                   values_line_bus=values_line_bus,
                    values_line_truck=values_line_truck)
+
 
 @app.route('/data', methods=["GET", "POST"])
 def data():
@@ -428,50 +252,5 @@ def video_feed():
         mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-from PIL import Image
-from io import BytesIO
-
-# detector_and_tracker = DetectionTrackingModel(model_path='./weight/best.pt',
-#                                               reID_model_path='./deep_sort/model_weights/mars-small128.pb')
-
-# frame_num = 0
-
-# def get_video_stream():
-    # global frame_num
-    # global count_car, count_van, count_bus, count_truck
-    # global labels_line, values_line_car, values_line_van, values_line_bus, values_line_truck
-    # for message in consumer:
-    #     nparr = np.frombuffer(message.value, np.uint8)
-    #     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    #     _, result_frame = detector_and_tracker.detect_and_tracking(frame, frame_num)
-    #     count_car += 1
-    #     count_van += 1
-    #     count_bus += 1
-    #     count_truck += 1
-    #     frame_num += 1
-
-    #     if frame_num % 30 == 0:
-    #         labels_line.append('0')
-    #         values_line_car.append(np.random.randint(1,10))
-    #         values_line_van.append(np.random.randint(1,10))
-    #         values_line_bus.append(np.random.randint(1,10))
-    #         values_line_truck.append(np.random.randint(1,10))
-
-    #     ret, buffer = cv2.imencode('.jpg', result_frame)
-    #     yield (b'--frame\r\n'
-    #            b'Content-Type: image/jpg\r\n\r\n' + buffer.tobytes() + b'\r\n\r\n')
-
-
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', debug=False)
-
-    # streamVideoPlayer = KafkaVideoView(
-    #     bootstrap_servers='localhost:9092',
-    #     topic='KafkaVideoStream',
-    #     client_id='KafkaVSClient',
-    #     group_id='KafkaVideoStreamConsumer',
-    #     poll=500,
-    #     frq=0.025
-    # )
-
-    # streamVideoPlayer.run()
+    app.run(host='0.0.0.0', debug=True)
