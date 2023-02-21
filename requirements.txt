@@ -43,3 +43,6 @@ cd C:/kafka
 
 cd C:/kafka
 .\bin\windows\kafka-server-start.bat .\config\server.properties
+
+python consumer.py
+python producer.py dataset_no_line_crossing.mp4
