@@ -1,8 +1,8 @@
 import datetime
 from time import sleep
 import cv2
-import time
 import os
+import json
 import pathlib
 import numpy as np
 from queue import Queue
@@ -12,11 +12,14 @@ from kafka import KafkaConsumer
 from deep_sort.tracker import Tracker
 from pathlib import Path
 import os
+import random
+import time
 from calc_speed import calcSpeed
 from deep_sort import preprocessing, nn_matching
 from deep_sort.detection import Detection
 from deep_sort.tracker import Tracker
 import matplotlib.pyplot as plt
+from flask import Flask, render_template, make_response, request
 
 # import from helpers
 from tracking_helpers import read_class_names, create_box_encoder
@@ -30,7 +33,7 @@ class DetectionTrackingModel():
                 coco_names_path="./io_data/input/classes/coco.names"):
 
         # YOLO v7
-        self.detector = Detector()
+        self.detector = Detector(conf_thres=0.25)
         self.detector.load_model(model_path, trace=False)
 
         self.coco_names_path = coco_names_path
@@ -38,7 +41,7 @@ class DetectionTrackingModel():
         self.class_names = read_class_names()
 
         # initialize Deep Sort
-        self.encoder = create_box_encoder(reID_model_path, batch_size=1)
+        self.encoder = create_box_encoder(reID_model_path, batch_size=128)
         metric = nn_matching.NearestNeighborDistanceMetric("cosine", 0.4, None)
         self.tracker = Tracker(metric)
         self.count_objects = True
@@ -270,9 +273,38 @@ consumer = KafkaConsumer(
 
 app = Flask(__name__)
 
-@app.route('/')
+count_car = 0
+count_van = 0
+count_bus = 0
+count_truck = 0
+
+@app.route('/', methods=["GET", "POST"])
 def index():
-    return render_template('index.html')
+    if request.method == "POST":
+        conf_thres = request.data
+        # detector_and_tracker.detector.conf_thres = received_data
+        print("Confidence threshold", conf_thres)
+    return render_template('index1.html',
+                           count_clean=count_clean,
+                           count_offensive=count_offensive,
+                           count_hate=count_hate,
+                           count_user=count_user,)
+
+@app.route('/data', methods=["GET", "POST"])
+def data():
+    data = [time.time() * 1000, random.random() * 100]
+    data1 = [time.time() * 1000, random.random() * 100]
+    data2 = [time.time() * 1000, random.random() * 100]
+    data3 = [time.time() * 1000, random.random() * 100]
+    response = make_response(json.dumps([data, data1, data2, data3]))
+    response.content_type = 'application/json'
+    return response
+
+@app.route('/slider_update', methods=['POST', 'GET'])
+def slider():
+    received_data = request.data
+    print(received_data)
+    return received_data
 
 @app.route('/video_feed', methods=['GET'])
 def video_feed():
@@ -283,8 +315,8 @@ def video_feed():
 from PIL import Image
 from io import BytesIO
 
-detector_and_tracker = DetectionTrackingModel(model_path='./weight/best.pt',
-                                              reID_model_path='./deep_sort/model_weights/mars-small128.pb')
+# detector_and_tracker = DetectionTrackingModel(model_path='./weight/best.pt',
+#                                               reID_model_path='./deep_sort/model_weights/mars-small128.pb')
 frame_num = 0
 
 def get_video_stream():
@@ -292,10 +324,10 @@ def get_video_stream():
     for message in consumer:
         nparr = np.frombuffer(message.value, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        _, result_frame = detector_and_tracker.detect_and_tracking(frame, frame_num)
+        # _, result_frame = detector_and_tracker.detect_and_tracking(frame, frame_num)
         frame_num += 1
 
-        ret, buffer = cv2.imencode('.jpg', result_frame)
+        ret, buffer = cv2.imencode('.jpg', frame)
         yield (b'--frame\r\n'
                b'Content-Type: image/jpg\r\n\r\n' + buffer.tobytes() + b'\r\n\r\n')
 
