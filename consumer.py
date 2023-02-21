@@ -210,11 +210,11 @@ def index():
                            count_van=count_van,
                            count_bus=count_bus,
                            count_truck=count_truck,
-                           labels_line=labels_line,
-                           values_line_car=values_line_car,
-                           values_line_van=values_line_van,
-                           values_line_bus=values_line_bus,
-                           values_line_truck=values_line_truck)
+                           labels_line=labels_line[-10:],
+                           values_line_car=values_line_car[-10:],
+                           values_line_van=values_line_van[-10:],
+                           values_line_bus=values_line_bus[-10:],
+                           values_line_truck=values_line_truck[-10:])
 
 
 @app.route('/refreshData')
