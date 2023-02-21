@@ -122,12 +122,17 @@ def get_video_stream(detector, tracker):
         yolo_dets = detector.detect(frame.copy(), plot_bb=False)  # Get the detections
         tracker.run_deep_sort(frame, yolo_dets)
 
-
+        car, van, bus, truck = 0, 0, 0, 0
         for track in tracker.tracker.tracks:  # update new findings AKA tracks
             if not track.is_confirmed() or track.time_since_update > 1:
                 continue
             bbox = track.to_tlbr()
             class_name = track.get_class()
+            if class_name == 'car': car += 1
+            if class_name == 'van': van += 1
+            if class_name == 'bus': bus += 1
+            if class_name == 'truck': truck += 1
+
             if track.track_id not in id_objects[class_name]:
                 id_objects[class_name].append(track.track_id)
 
@@ -161,11 +166,11 @@ def get_video_stream(detector, tracker):
         count_truck = len(id_objects['truck'])
 
         if frame_num % 30 == 0:
-            labels_line.append('0')
-            values_line_car.append(np.random.randint(1, 10))
-            values_line_van.append(np.random.randint(1, 10))
-            values_line_bus.append(np.random.randint(1, 10))
-            values_line_truck.append(np.random.randint(1, 10))
+            labels_line.append(str(frame_num))
+            values_line_car.append(car)
+            values_line_van.append(van)
+            values_line_bus.append(bus)
+            values_line_truck.append(truck)
 
         ret, buffer = cv2.imencode('.jpg', frame)
         yield (b'--frame\r\n'
