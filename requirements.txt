@@ -37,14 +37,14 @@ thop>=0.1.1.post2209072238
 # albumentations>=1.0.3
 # pycocotools>=2.0  # COCO mAP
 # roboflow
-
-cd C:/kafka
-.\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
-
-cd C:/kafka
-.\bin\windows\kafka-server-start.bat .\config\server.properties
-
-python consumer.py
-python producer.py dataset_no_line_crossing.mp4
+#
+# cd C:/kafka
+# .\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
+#
+# cd C:/kafka
+# .\bin\windows\kafka-server-start.bat .\config\server.properties
+#
+# python consumer.py
+# python producer.py dataset_no_line_crossing.mp4
 
 Flask>=2.2.3
