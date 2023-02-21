@@ -6,9 +6,9 @@ from kafka import KafkaProducer
 
 
 class KafkaVideoStreaming():
-    def __init__(self, bootstrap_servers, topic, videoFile, client_id, batch_size=65536, frq=0.001):
+    def __init__(self, bootstrap_servers, topic, videoFile: str, client_id, batch_size=65536, frq=0.001):
         self.videoFile = videoFile
-        self.topicKey = str(videoFile)
+        self.topicKey = videoFile
         self.topic = topic
         self.batch_size = batch_size
         self.client_id = client_id
@@ -18,7 +18,7 @@ class KafkaVideoStreaming():
     def setProducer(self):
         self.producer = KafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
-            api_version=(0,10,1),
+            api_version=(0, 10, 1),
             client_id=self.client_id,
             acks=1,
             value_serializer=None,
@@ -74,7 +74,7 @@ class KafkaVideoStreaming():
         self.keep_processing = True
 
         try:
-            while(__VIDEO_FILE.isOpened()) and self.keep_processing:
+            while (__VIDEO_FILE.isOpened()) and self.keep_processing:
                 readStat, frame = __VIDEO_FILE.read()
 
                 if not readStat:
@@ -90,7 +90,7 @@ class KafkaVideoStreaming():
                 print('Finished processing video %s' % self.topicKey)
             else:
                 print("Error while reading %s" % self.topicKey)
-        
+
             __VIDEO_FILE.release()
         except KeyboardInterrupt:
             __VIDEO_FILE.release()
@@ -99,20 +99,21 @@ class KafkaVideoStreaming():
 
 topic = "KafkaVideoStream"
 
+
 def publish_video(video_file):
     producer = KafkaProducer(bootstrap_servers='localhost:9092')
     video = cv2.VideoCapture(video_file)
     print('Publishing video...')
 
     frame_num = 0
-    while(video.isOpened()):
+    while (video.isOpened()):
         success, frame = video.read()
-        
+
         print(f"Sending frame {frame_num}...")
         if not success:
             print("Error while reading video!")
             break
-        
+
         ret, buffer = cv2.imencode('.jpg', frame)
         producer.send(topic, buffer.tobytes())
 
@@ -122,8 +123,9 @@ def publish_video(video_file):
     video.release()
     print('publish complete')
 
+
 if __name__ == '__main__':
-    if(len(sys.argv) > 1):
+    if (len(sys.argv) > 1):
         video_path = sys.argv[1]
 
         publish_video(video_path)
