@@ -9,15 +9,16 @@ from queue import Queue
 from threading import Thread
 from flask import Flask, Response, render_template
 from kafka import KafkaConsumer
-from deep_sort.tracker import Tracker
+from bridge_wrapper import DeepSORT
+from deep_sort.deep_sort.tracker import Tracker
 from pathlib import Path
 import os
 import random
 import time
 from calc_speed import calcSpeed
-from deep_sort import preprocessing, nn_matching
-from deep_sort.detection import Detection
-from deep_sort.tracker import Tracker
+from deep_sort.deep_sort import preprocessing, nn_matching
+from deep_sort.deep_sort.detection import Detection
+from deep_sort.deep_sort.tracker import Tracker
 import matplotlib.pyplot as plt
 from flask import Flask, render_template, make_response, request
 
@@ -25,12 +26,13 @@ from flask import Flask, render_template, make_response, request
 from tracking_helpers import read_class_names, create_box_encoder
 from detection_helpers import *
 
+
 class DetectionTrackingModel():
     def __init__(self, model_path,
-                reID_model_path,
-                max_cosine_distance=0.4, 
-                nms_max_overlap=1.0, 
-                coco_names_path="./io_data/input/classes/coco.names"):
+                 reID_model_path,
+                 max_cosine_distance=0.4,
+                 nms_max_overlap=1.0,
+                 coco_names_path="./io_data/input/classes/coco.names"):
 
         # YOLO v7
         self.detector = Detector(conf_thres=0.25)
@@ -77,13 +79,13 @@ class DetectionTrackingModel():
         # skip every nth frame. When every frame is not important, you can use this to fasten the process
         if skip_frames and not frame_num % skip_frames:
             return False, frame
-        
+
         if self.verbose >= 1:
             start_time = time.time()
 
         if not os.path.exists(f'./detected_frame/{frame_num}.txt'):
             # Get the detections
-            yolo_dets = self.detector.detect(frame.copy(), plot_bb = False)
+            yolo_dets = self.detector.detect(frame.copy(), plot_bb=False)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             if yolo_dets is None:
@@ -91,25 +93,25 @@ class DetectionTrackingModel():
                 scores = []
                 classes = []
                 num_objects = 0
-            
-            else:
-                bboxes = yolo_dets[:,:4]
-                bboxes[:,2] = bboxes[:,2] - bboxes[:,0] # convert from xyxy to xywh
-                bboxes[:,3] = bboxes[:,3] - bboxes[:,1]
 
-                scores = yolo_dets[:,4]
-                classes = yolo_dets[:,-1]
+            else:
+                bboxes = yolo_dets[:, :4]
+                bboxes[:, 2] = bboxes[:, 2] - bboxes[:, 0]  # convert from xyxy to xywh
+                bboxes[:, 3] = bboxes[:, 3] - bboxes[:, 1]
+
+                scores = yolo_dets[:, 4]
+                classes = yolo_dets[:, -1]
                 num_objects = bboxes.shape[0]
-            
+
             self.save_txt(frame_num, bboxes, scores, classes)
-        
+
         else:
             bboxes, scores, classes, num_objects = self.load_txt(frame_num)
 
         # ---------------------------------------- DETECTION PART COMPLETED ---------------------------------------------------------------------
-        
+
         names = []
-        for i in range(num_objects): # loop through objects and use class index to get class name
+        for i in range(num_objects):  # loop through objects and use class index to get class name
             class_indx = int(classes[i])
             class_name = self.class_names[class_indx]
             names.append(class_name)
@@ -118,23 +120,26 @@ class DetectionTrackingModel():
         count = len(names)
 
         if self.count_objects:
-            cv2.putText(frame, "Objects being tracked: {}".format(count), (5, 35), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1.5, ((255, 255, 255)), 2)
+            cv2.putText(frame, "Objects being tracked: {}".format(count), (5, 35), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1.5,
+                        ((255, 255, 255)), 2)
 
         # ---------------------------------- DeepSORT tacker work starts here ------------------------------------------------------------
-        features = self.encoder(frame, bboxes) # encode detections and feed to tracker. [No of BB / detections per frame, embed_size]
-        detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in zip(bboxes, scores, names, features)] # [No of BB per frame] deep_sort.detection.Detection object
+        features = self.encoder(frame,
+                                bboxes)  # encode detections and feed to tracker. [No of BB / detections per frame, embed_size]
+        detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in
+                      zip(bboxes, scores, names, features)]  # [No of BB per frame] deep_sort.detection.Detection object
 
-        cmap = plt.get_cmap('tab20b') # initialize color map
+        cmap = plt.get_cmap('tab20b')  # initialize color map
         colors = [cmap(i)[:3] for i in np.linspace(0, 1, 20)]
 
         boxs = np.array([d.tlwh for d in detections])  # run non-maxima supression below
         scores = np.array([d.confidence for d in detections])
         classes = np.array([d.class_name for d in detections])
         indices = preprocessing.non_max_suppression(boxs, classes, self.nms_max_overlap, scores)
-        detections = [detections[i] for i in indices]       
+        detections = [detections[i] for i in indices]
 
         self.tracker.predict()  # Call the tracker
-        self.tracker.update(detections) #  updtate using Kalman Gain
+        self.tracker.update(detections)  # updtate using Kalman Gain
 
         for track in self.tracker.tracks:  # update new findings AKA tracks
             if not track.is_confirmed() or track.time_since_update > 1:
@@ -144,9 +149,9 @@ class DetectionTrackingModel():
 
             # Calculate speed of object
             track = calcSpeed(track, bbox, frame_num, 30)
-            
+
             # draw bbox on screen
-            color = colors[int(track.track_id) % len(colors)]  
+            color = colors[int(track.track_id) % len(colors)]
             color = [i * 255 for i in color]
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
             text_header_bbox: str = class_name + ":" + str(track.track_id)
@@ -156,26 +161,34 @@ class DetectionTrackingModel():
                 text_header_bbox += "-" + str(round(track.speed, 1)) + "km/h"
 
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1] - 30)),
-                        (int(bbox[0]) + (len(class_name) + len(str(track.track_id))) * 17, int(bbox[1])), color,
-                        -1)
+                          (int(bbox[0]) + (len(class_name) + len(str(track.track_id))) * 17, int(bbox[1])), color,
+                          -1)
             cv2.putText(frame, text_header_bbox, (int(bbox[0]), int(bbox[1] - 11)), 0, 0.6,
-                        (255, 255, 255), 1, lineType=cv2.LINE_AA)    
+                        (255, 255, 255), 1, lineType=cv2.LINE_AA)
 
             if self.verbose == 2:
-                print("Tracker ID: {}, Class: {},  BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name, (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
-                
+                print("Tracker ID: {}, Class: {},  BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id),
+                                                                                                    class_name, (
+                                                                                                    int(bbox[0]),
+                                                                                                    int(bbox[1]),
+                                                                                                    int(bbox[2]),
+                                                                                                    int(bbox[3]))))
+
         # -------------------------------- Tracker work ENDS here -----------------------------------------------------------------------
         if self.verbose >= 1:
-            fps = 1.0 / (time.time() - start_time) # calculate frames per second of running detections
-            if not self.count_objects: print(f"Processed frame no: {frame_num} || Current FPS: {round(fps, 2)}")
-            else: print(f"Processed frame no: {frame_num} || Current FPS: {round(fps,2)} || Objects tracked: {count}")
-        
+            fps = 1.0 / (time.time() - start_time)  # calculate frames per second of running detections
+            if not self.count_objects:
+                print(f"Processed frame no: {frame_num} || Current FPS: {round(fps, 2)}")
+            else:
+                print(f"Processed frame no: {frame_num} || Current FPS: {round(fps, 2)} || Objects tracked: {count}")
+
         frame_result = np.asarray(frame)
         frame_result = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
         # cv2.imshow('frame', result)
         return True, frame_result
-        
+
+
 class KafkaVideoView():
     def __init__(self, bootstrap_servers, topic, client_id, group_id, poll=500, frq=0.01):
         self.topic = topic
@@ -185,35 +198,38 @@ class KafkaVideoView():
         self.poll = poll
         self.frq = frq
         self.frame_num = 0
+        # self.detector = Detector()
+        # self.detector.load_model('./weights/best.pt', trace=False)
+        # self.detector.device = 0
+        # self.tracker = DeepSORT(reID_model_path='./weights/deep_sort.pt', detector=self.detector)
+        # tracker.track_video(video='./IO_data/input/video/1.mp4', show_live=True, count_objects=True, verbose=1)
 
-        self.detector_and_tracker = DetectionTrackingModel(model_path='./weight/best.pt',
-                                                           reID_model_path='./deep_sort/model_weights/mars-small128.pb')
 
     def setConsumer(self):
         self.consumer = KafkaConsumer(
-                self.topic, 
-                bootstrap_servers=self.bootstrap_servers.split(','),
-                fetch_max_bytes=52428800,
-                fetch_max_wait_ms=1000,
-                fetch_min_bytes=1,
-                max_partition_fetch_bytes=1048576,
-                value_deserializer=None,
-                key_deserializer=None,
-                max_in_flight_requests_per_connection=10,
-                client_id=self.client_id,
-                group_id=self.group_id,
-                auto_offset_reset='earliest',
-                max_poll_records=self.poll,
-                max_poll_interval_ms=300000,
-                heartbeat_interval_ms=3000,
-                session_timeout_ms=10000,
-                enable_auto_commit=True,
-                auto_commit_interval_ms=5000,
-                reconnect_backoff_ms=50,
-                reconnect_backoff_max_ms=500,
-                request_timeout_ms=305000,
-                receive_buffer_bytes=32768,
-            )
+            self.topic,
+            bootstrap_servers=self.bootstrap_servers.split(','),
+            fetch_max_bytes=52428800,
+            fetch_max_wait_ms=1000,
+            fetch_min_bytes=1,
+            max_partition_fetch_bytes=1048576,
+            value_deserializer=None,
+            key_deserializer=None,
+            max_in_flight_requests_per_connection=10,
+            client_id=self.client_id,
+            group_id=self.group_id,
+            auto_offset_reset='earliest',
+            max_poll_records=self.poll,
+            max_poll_interval_ms=300000,
+            heartbeat_interval_ms=3000,
+            session_timeout_ms=10000,
+            enable_auto_commit=True,
+            auto_commit_interval_ms=5000,
+            reconnect_backoff_ms=50,
+            reconnect_backoff_max_ms=500,
+            request_timeout_ms=305000,
+            receive_buffer_bytes=32768,
+        )
 
     def playStream(self, queue):
         while self.keepPlaying:
@@ -232,7 +248,7 @@ class KafkaVideoView():
 
                 isSuccess, result_frame = self.detector_and_tracker.detect_and_tracking(frame, self.frame_num)
                 cv2.imshow('Streaming Video', result_frame if isSuccess else frame)
-            
+
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     self.keepConsuming = False
                     cv2.destroyAllWindows()
@@ -246,7 +262,7 @@ class KafkaVideoView():
         self.videoQueue = Queue()
         self.keepConsuming = True
 
-        self.playerThread = Thread(target=self.playStream, args=(self.videoQueue, ), daemon=False)
+        self.playerThread = Thread(target=self.playStream, args=(self.videoQueue,), daemon=False)
         self.playerThread.start()
 
         try:
@@ -266,9 +282,58 @@ class KafkaVideoView():
         self.playerThread.join()
 
 
+frame_num = 0
+detector = Detector()
+detector.load_model('./weights/best.pt', trace=False)
+detector.device = 0
+tracker = DeepSORT(reID_model_path='./weights/deep_sort.pt', detector=detector)
+
+
+def get_video_stream(detector, tracker):
+    global frame_num
+    for message in consumer:
+        nparr = np.frombuffer(message.value, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        yolo_dets = detector.detect(frame.copy(), plot_bb=False)  # Get the detections
+        tracker.run_deep_sort(frame, yolo_dets)
+        for track in tracker.tracker.tracks:  # update new findings AKA tracks
+            if not track.is_confirmed() or track.time_since_update > 1:
+                continue
+            bbox = track.to_tlbr()
+            class_name = track.get_class()
+            track = calcSpeed(track, bbox, frame_num, 30)
+
+            # initialize color map
+            cmap = plt.get_cmap('tab20b')
+            colors = [cmap(i)[:3] for i in np.linspace(0, 1, 20)]
+            color = colors[int(track.track_id) % len(colors)]  # draw bbox on screen
+            color = [i * 255 for i in color]
+
+            # draw bounding box of objects
+            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
+
+            # draw speed above bounding box of object
+            text_header_bbox: str = class_name + ":" + str(track.track_id)
+            if track.speed > 0:
+                # print(f"{track.class_name} {track.track_id}: {track.speed} km/h")
+                text_header_bbox += "-" + str(round(track.speed, 1)) + "km/h"
+
+            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1] - 30)),
+                          (int(bbox[0]) + (len(class_name) + len(str(track.track_id))) * 17, int(bbox[1])), color,
+                          -1)
+            cv2.putText(frame, text_header_bbox, (int(bbox[0]), int(bbox[1] - 11)), 0, 0.6,
+                        (255, 255, 255), 1, lineType=cv2.LINE_AA)
+
+        frame_num += 1
+
+        ret, buffer = cv2.imencode('.jpg', frame)
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpg\r\n\r\n' + buffer.tobytes() + b'\r\n\r\n')
+
+
 topic = "KafkaVideoStream"
 consumer = KafkaConsumer(
-    topic, 
+    topic,
     bootstrap_servers=['localhost:9092'])
 
 app = Flask(__name__)
@@ -278,17 +343,15 @@ count_van = 0
 count_bus = 0
 count_truck = 0
 
+
 @app.route('/', methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         conf_thres = request.data
         # detector_and_tracker.detector.conf_thres = received_data
         print("Confidence threshold", conf_thres)
-    return render_template('index1.html',
-                           count_clean=count_clean,
-                           count_offensive=count_offensive,
-                           count_hate=count_hate,
-                           count_user=count_user,)
+    return render_template('index1.html')
+
 
 @app.route('/data', methods=["GET", "POST"])
 def data():
@@ -300,40 +363,30 @@ def data():
     response.content_type = 'application/json'
     return response
 
+
 @app.route('/slider_update', methods=['POST', 'GET'])
 def slider():
     received_data = request.data
     print(received_data)
     return received_data
 
+
 @app.route('/video_feed', methods=['GET'])
 def video_feed():
     return Response(
-        get_video_stream(), 
+        get_video_stream(detector, tracker),
         mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 from PIL import Image
 from io import BytesIO
 
 # detector_and_tracker = DetectionTrackingModel(model_path='./weight/best.pt',
 #                                               reID_model_path='./deep_sort/model_weights/mars-small128.pb')
-frame_num = 0
-
-def get_video_stream():
-    global frame_num
-    for message in consumer:
-        nparr = np.frombuffer(message.value, np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        # _, result_frame = detector_and_tracker.detect_and_tracking(frame, frame_num)
-        frame_num += 1
-
-        ret, buffer = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpg\r\n\r\n' + buffer.tobytes() + b'\r\n\r\n')
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', debug=True)
+    app.run(host='0.0.0.0', debug=False)
 
     # streamVideoPlayer = KafkaVideoView(
     #     bootstrap_servers='localhost:9092',
